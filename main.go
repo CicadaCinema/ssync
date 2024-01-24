@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/url"
 	"os"
@@ -10,7 +12,30 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type Secrets struct {
+	ApplicationID string
+	Token         string
+}
+
+func readSecrets() Secrets {
+	confFile, err := os.Open("conf.json")
+	if err != nil {
+		log.Panicf("unable to open configuration file: %s", err)
+	}
+	defer confFile.Close()
+
+	var conf Secrets
+	err = json.NewDecoder(confFile).Decode(&conf)
+	if err != nil {
+		log.Panicf("unable to decode configuration file: %s", err)
+	}
+
+	return conf
+}
+
 func main() {
+	_ = readSecrets()
+
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
