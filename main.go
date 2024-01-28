@@ -33,8 +33,26 @@ func readSecrets() Secrets {
 	return conf
 }
 
+func request(c *websocket.Conn, command string) (*string, error) {
+	// Write the request.
+	err := c.WriteMessage(websocket.TextMessage, []byte(command))
+	if err != nil {
+		return nil, err
+	}
+
+	// Read the response.
+	_, message, err := c.ReadMessage()
+	if err != nil {
+		return nil, err
+	}
+	messageString := string(message)
+	return &messageString, nil
+}
+
+var secrets Secrets
+
 func main() {
-	secrets := readSecrets()
+	secrets = readSecrets()
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -48,17 +66,13 @@ func main() {
 	}
 	defer c.Close()
 
-	err = c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`0:init:{"name":"note","clientid":"simperium-andriod-1.0","api":"1.1","token":"%s","app_id":"%s","library":"simperium-android","version":"1.0"}`, secrets.Token, secrets.ApplicationID)))
+	message, err := request(c, fmt.Sprintf(`0:init:{"name":"note","clientid":"simperium-andriod-1.0","api":"1.1","token":"%s","app_id":"%s","library":"simperium-android","version":"1.0"}`, secrets.Token, secrets.ApplicationID))
 	if err != nil {
-		log.Println("write:", err)
+		log.Println(err)
 		return
 	}
-	_, message, err := c.ReadMessage()
-	if err != nil {
-		log.Println("read:", err)
-		return
-	}
-	log.Printf("recv: %s", message)
+	log.Printf("recv: %s", *message)
+
 	return
 
 	done := make(chan struct{})
