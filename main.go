@@ -12,6 +12,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var secrets Secrets
+
 type Secrets struct {
 	ApplicationID string
 	Token         string
@@ -53,7 +55,15 @@ func request(c *websocket.Conn, command string, messagesToReceive int) ([]string
 	return messages, nil
 }
 
-var secrets Secrets
+type EntityMetadata struct {
+	Id      string `json:"id"`
+	Version int    `json:"v"`
+}
+
+type BucketMetadata struct {
+	Current string           `json:"current"`
+	Index   []EntityMetadata `json:"index"`
+}
 
 func main() {
 	secrets = readSecrets()
@@ -81,7 +91,15 @@ func main() {
 		log.Println(err)
 		return
 	}
-	log.Printf("recv: %s", messages)
+
+	bucketMetadata := &BucketMetadata{}
+	err = json.Unmarshal([]byte(messages[0][4:]), bucketMetadata)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	fmt.Println("ok")
 
 	return
 
