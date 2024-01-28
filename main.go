@@ -33,20 +33,24 @@ func readSecrets() Secrets {
 	return conf
 }
 
-func request(c *websocket.Conn, command string) (*string, error) {
+func request(c *websocket.Conn, command string, messagesToReceive int) ([]string, error) {
 	// Write the request.
 	err := c.WriteMessage(websocket.TextMessage, []byte(command))
 	if err != nil {
 		return nil, err
 	}
 
-	// Read the response.
-	_, message, err := c.ReadMessage()
-	if err != nil {
-		return nil, err
+	// Read the response(s).
+	messages := make([]string, 0)
+	for i := 0; i < messagesToReceive; i++ {
+		_, response, err := c.ReadMessage()
+		if err != nil {
+			return nil, err
+		} else {
+			messages = append(messages, string(response))
+		}
 	}
-	messageString := string(message)
-	return &messageString, nil
+	return messages, nil
 }
 
 var secrets Secrets
@@ -66,12 +70,18 @@ func main() {
 	}
 	defer c.Close()
 
-	message, err := request(c, fmt.Sprintf(`0:init:{"name":"note","clientid":"simperium-andriod-1.0","api":"1.1","token":"%s","app_id":"%s","library":"simperium-android","version":"1.0"}`, secrets.Token, secrets.ApplicationID))
+	messages, err := request(c, fmt.Sprintf(`0:init:{"name":"note","clientid":"simperium-andriod-1.0","api":"1.1","token":"%s","app_id":"%s","library":"simperium-android","version":"1.0"}`, secrets.Token, secrets.ApplicationID), 2)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	log.Printf("recv: %s", *message)
+
+	messages, err = request(c, "0:i::::500", 1)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Printf("recv: %s", messages)
 
 	return
 
