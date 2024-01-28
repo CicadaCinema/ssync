@@ -34,12 +34,12 @@ func readSecrets() Secrets {
 }
 
 func main() {
-	_ = readSecrets()
+	secrets := readSecrets()
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	u := url.URL{Scheme: "ws", Host: "localhost:8080", Path: "/echo"}
+	u := url.URL{Scheme: "wss", Host: "api.simperium.com", Path: fmt.Sprintf("/sock/1/%s/websocket", secrets.ApplicationID)}
 	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -47,6 +47,19 @@ func main() {
 		log.Fatal("dial:", err)
 	}
 	defer c.Close()
+
+	err = c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`0:init:{"name":"note","clientid":"simperium-andriod-1.0","api":"1.1","token":"%s","app_id":"%s","library":"simperium-android","version":"1.0"}`, secrets.Token, secrets.ApplicationID)))
+	if err != nil {
+		log.Println("write:", err)
+		return
+	}
+	_, message, err := c.ReadMessage()
+	if err != nil {
+		log.Println("read:", err)
+		return
+	}
+	log.Printf("recv: %s", message)
+	return
 
 	done := make(chan struct{})
 
