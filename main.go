@@ -115,12 +115,9 @@ func main() {
 		notes[entity.Id] = data["content"].(string)
 	}
 
-	fmt.Println(notes)
-
-	return
-
 	done := make(chan struct{})
 
+	// reader
 	go func() {
 		defer close(done)
 		for {
@@ -133,15 +130,19 @@ func main() {
 		}
 	}()
 
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Second * 20)
 	defer ticker.Stop()
 
+	// writer
+	heartbeat := 0
 	for {
 		select {
 		case <-done:
 			return
-		case t := <-ticker.C:
-			err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
+		case <-ticker.C:
+			err := c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("h:%d", heartbeat)))
+			// assume heartbeat response was OK
+			heartbeat += 2
 			if err != nil {
 				log.Println("write:", err)
 				return
