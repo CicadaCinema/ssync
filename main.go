@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -99,7 +100,17 @@ func main() {
 		return
 	}
 
-	fmt.Println("ok")
+	messages, err = request(c, fmt.Sprintf("0:e:%s.%d", bucketMetadata.Index[0].Id, bucketMetadata.Index[0].Version), 1)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(strings.SplitN(messages[0], "\n", 2)[1]), &data); err != nil {
+		panic(err)
+	}
+	data = data["data"].(map[string]interface{})
+	fmt.Println(data["content"])
 
 	return
 
