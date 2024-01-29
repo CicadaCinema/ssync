@@ -100,17 +100,22 @@ func main() {
 		return
 	}
 
-	messages, err = request(c, fmt.Sprintf("0:e:%s.%d", bucketMetadata.Index[0].Id, bucketMetadata.Index[0].Version), 1)
-	if err != nil {
-		log.Println(err)
-		return
+	notes := make(map[string]string)
+	for _, entity := range bucketMetadata.Index {
+		messages, err = request(c, fmt.Sprintf("0:e:%s.%d", entity.Id, entity.Version), 1)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(strings.SplitN(messages[0], "\n", 2)[1]), &data); err != nil {
+			panic(err)
+		}
+		data = data["data"].(map[string]interface{})
+		notes[entity.Id] = data["content"].(string)
 	}
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(strings.SplitN(messages[0], "\n", 2)[1]), &data); err != nil {
-		panic(err)
-	}
-	data = data["data"].(map[string]interface{})
-	fmt.Println(data["content"])
+
+	fmt.Println(notes)
 
 	return
 
