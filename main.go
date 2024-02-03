@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 var secrets Secrets
@@ -117,6 +118,8 @@ func main() {
 
 	done := make(chan struct{})
 
+	dmp := diffmatchpatch.New()
+
 	// reader
 	go func() {
 		defer close(done)
@@ -126,7 +129,43 @@ func main() {
 				log.Println("read:", err)
 				return
 			}
-			log.Printf("recv: %s", message)
+
+			if message[0] == 'h' {
+				fmt.Print("h")
+			}
+
+			// attempt to update the internal state of `notes` if this is a change command
+			// continue if this is not a diffmatchpatch change
+			if message[2] == 'c' {
+				var changeData map[string]interface{}
+				if err := json.Unmarshal([]byte(message[5:len(message)-1]), &changeData); err != nil {
+					panic(err)
+				}
+
+				if changeData["o"] != "M" {
+					continue
+				}
+
+				content := changeData["v"].(map[string]interface{})
+				content = content["content"].(map[string]interface{})
+
+				if content["o"] != "d" {
+					continue
+				}
+
+				// at this point we know that `content["v"]` contains a diffmatchpatch string
+				log.Printf("recv: %s", message[5:len(message)-1])
+
+				noteId := changeData["id"].(string)
+
+				diffs, err := dmp.DiffFromDelta(notes[noteId], content["v"].(string))
+				if err != nil {
+					panic(err)
+				}
+
+				notes[noteId] = dmp.DiffText2(diffs)
+				fmt.Printf("---\n%s\n", notes[noteId])
+			}
 		}
 	}()
 
