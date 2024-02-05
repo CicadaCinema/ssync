@@ -59,14 +59,59 @@ func request(c *websocket.Conn, command string, messagesToReceive int) ([]string
 	return messages, nil
 }
 
-type EntityMetadata struct {
-	Id      string `json:"id"`
-	Version int    `json:"v"`
+type Entity struct {
+	id          string
+	version     int
+	data        map[string]interface{}
+	noteContent string
 }
 
-type BucketMetadata struct {
-	Current string           `json:"current"`
-	Index   []EntityMetadata `json:"index"`
+type Bucket struct {
+	currentVersion string
+	entities       map[string]*Entity
+}
+
+func createBucket(c *websocket.Conn) (*Bucket, error) {
+	// request the index
+	messages, err := request(c, "0:i::::500", 1)
+	if err != nil {
+		return nil, err
+	}
+
+	var bucketMetadata map[string]interface{}
+	err = json.Unmarshal([]byte(messages[0][4:]), &bucketMetadata)
+	check(err)
+
+	bucket := Bucket{
+		currentVersion: bucketMetadata["current"].(string),
+		entities:       make(map[string]*Entity),
+	}
+
+	for _, entityMetadata := range bucketMetadata["index"].([]interface{}) {
+		entityId := entityMetadata.(map[string]interface{})["id"].(string)
+		entityVersion := int(entityMetadata.(map[string]interface{})["v"].(float64))
+
+		// request this entity
+		messages, err = request(c, fmt.Sprintf("0:e:%s.%d", entityId, entityVersion), 1)
+		check(err)
+
+		var entityData map[string]interface{}
+		err := json.Unmarshal([]byte(strings.SplitN(messages[0], "\n", 2)[1]), &entityData)
+		check(err)
+
+		entityData = entityData["data"].(map[string]interface{})
+
+		entity := Entity{
+			id:          entityId,
+			version:     entityVersion,
+			data:        entityData,
+			noteContent: entityData["content"].(string),
+		}
+
+		bucket.entities[entityId] = &entity
+	}
+
+	return &bucket, nil
 }
 
 func main() {
@@ -82,27 +127,13 @@ func main() {
 	check(err)
 	defer c.Close()
 
-	messages, err := request(c, fmt.Sprintf(`0:init:{"name":"note","clientid":"simperium-andriod-1.0","api":"1.1","token":"%s","app_id":"%s","library":"simperium-android","version":"1.0"}`, secrets.Token, secrets.ApplicationID), 2)
+	_, err = request(c, fmt.Sprintf(`0:init:{"name":"note","clientid":"simperium-andriod-1.0","api":"1.1","token":"%s","app_id":"%s","library":"simperium-android","version":"1.0"}`, secrets.Token, secrets.ApplicationID), 2)
 	check(err)
 
-	messages, err = request(c, "0:i::::500", 1)
+	bucket, err := createBucket(c)
 	check(err)
 
-	bucketMetadata := &BucketMetadata{}
-	err = json.Unmarshal([]byte(messages[0][4:]), bucketMetadata)
-	check(err)
-
-	notes := make(map[string]string)
 	selectedNoteId := ""
-	for _, entity := range bucketMetadata.Index {
-		messages, err = request(c, fmt.Sprintf("0:e:%s.%d", entity.Id, entity.Version), 1)
-		check(err)
-		var data map[string]interface{}
-		err := json.Unmarshal([]byte(strings.SplitN(messages[0], "\n", 2)[1]), &data)
-		check(err)
-		data = data["data"].(map[string]interface{})
-		notes[entity.Id] = data["content"].(string)
-	}
 
 	done := make(chan struct{})
 
@@ -142,11 +173,11 @@ func main() {
 
 				noteId := changeData["id"].(string)
 
-				diffs, err := dmp.DiffFromDelta(notes[noteId], content["v"].(string))
+				diffs, err := dmp.DiffFromDelta(bucket.entities[noteId].noteContent, content["v"].(string))
 				check(err)
 
-				notes[noteId] = dmp.DiffText2(diffs)
-				fmt.Printf("---\n%s\n", notes[noteId])
+				bucket.entities[noteId].noteContent = dmp.DiffText2(diffs)
+				fmt.Printf("---\n%s\n", bucket.entities[noteId].noteContent)
 
 				if selectedNoteId == "" {
 					selectedNoteId = noteId
