@@ -169,19 +169,19 @@ func main() {
 		}
 	}()
 
-	ticker := time.NewTicker(time.Second * 20)
-	defer ticker.Stop()
+	heartbeatTicker := time.NewTicker(time.Second * 20)
+	defer heartbeatTicker.Stop()
 
 	// writer
-	heartbeat := 0
+	heartbeatCount := 0
 	for {
 		select {
 		case <-done:
 			return
-		case <-ticker.C:
-			err := c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("h:%d", heartbeat)))
+		case <-heartbeatTicker.C:
+			err := c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("h:%d", heartbeatCount)))
 			// assume heartbeat response was OK
-			heartbeat += 2
+			heartbeatCount += 2
 			if err != nil {
 				log.Println("write:", err)
 				return
