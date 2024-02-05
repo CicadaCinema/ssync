@@ -93,6 +93,7 @@ func main() {
 	check(err)
 
 	notes := make(map[string]string)
+	selectedNoteId := ""
 	for _, entity := range bucketMetadata.Index {
 		messages, err = request(c, fmt.Sprintf("0:e:%s.%d", entity.Id, entity.Version), 1)
 		check(err)
@@ -146,6 +147,10 @@ func main() {
 
 				notes[noteId] = dmp.DiffText2(diffs)
 				fmt.Printf("---\n%s\n", notes[noteId])
+
+				if selectedNoteId == "" {
+					selectedNoteId = noteId
+				}
 			}
 		}
 	}()
