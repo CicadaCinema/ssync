@@ -14,6 +14,12 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
+func check(err error) {
+	if err != nil {
+		log.Panicln(err)
+	}
+}
+
 var secrets Secrets
 
 type Secrets struct {
@@ -23,16 +29,12 @@ type Secrets struct {
 
 func readSecrets() Secrets {
 	confFile, err := os.Open("conf.json")
-	if err != nil {
-		log.Panicf("unable to open configuration file: %s", err)
-	}
+	check(err)
 	defer confFile.Close()
 
 	var conf Secrets
 	err = json.NewDecoder(confFile).Decode(&conf)
-	if err != nil {
-		log.Panicf("unable to decode configuration file: %s", err)
-	}
+	check(err)
 
 	return conf
 }
@@ -77,41 +79,26 @@ func main() {
 	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		log.Fatal("dial:", err)
-	}
+	check(err)
 	defer c.Close()
 
 	messages, err := request(c, fmt.Sprintf(`0:init:{"name":"note","clientid":"simperium-andriod-1.0","api":"1.1","token":"%s","app_id":"%s","library":"simperium-android","version":"1.0"}`, secrets.Token, secrets.ApplicationID), 2)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	check(err)
 
 	messages, err = request(c, "0:i::::500", 1)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	check(err)
 
 	bucketMetadata := &BucketMetadata{}
 	err = json.Unmarshal([]byte(messages[0][4:]), bucketMetadata)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	check(err)
 
 	notes := make(map[string]string)
 	for _, entity := range bucketMetadata.Index {
 		messages, err = request(c, fmt.Sprintf("0:e:%s.%d", entity.Id, entity.Version), 1)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+		check(err)
 		var data map[string]interface{}
-		if err := json.Unmarshal([]byte(strings.SplitN(messages[0], "\n", 2)[1]), &data); err != nil {
-			panic(err)
-		}
+		err := json.Unmarshal([]byte(strings.SplitN(messages[0], "\n", 2)[1]), &data)
+		check(err)
 		data = data["data"].(map[string]interface{})
 		notes[entity.Id] = data["content"].(string)
 	}
@@ -125,10 +112,7 @@ func main() {
 		defer close(done)
 		for {
 			_, message, err := c.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
-				return
-			}
+			check(err)
 
 			if message[0] == 'h' {
 				fmt.Print("h")
@@ -138,9 +122,8 @@ func main() {
 			// continue if this is not a diffmatchpatch change
 			if message[2] == 'c' {
 				var changeData map[string]interface{}
-				if err := json.Unmarshal([]byte(message[5:len(message)-1]), &changeData); err != nil {
-					panic(err)
-				}
+				err := json.Unmarshal([]byte(message[5:len(message)-1]), &changeData)
+				check(err)
 
 				if changeData["o"] != "M" {
 					continue
@@ -159,9 +142,7 @@ func main() {
 				noteId := changeData["id"].(string)
 
 				diffs, err := dmp.DiffFromDelta(notes[noteId], content["v"].(string))
-				if err != nil {
-					panic(err)
-				}
+				check(err)
 
 				notes[noteId] = dmp.DiffText2(diffs)
 				fmt.Printf("---\n%s\n", notes[noteId])
@@ -182,20 +163,14 @@ func main() {
 			err := c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("h:%d", heartbeatCount)))
 			// assume heartbeat response was OK
 			heartbeatCount += 2
-			if err != nil {
-				log.Println("write:", err)
-				return
-			}
+			check(err)
 		case <-interrupt:
 			log.Println("interrupt")
 
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
 			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err != nil {
-				log.Println("write close:", err)
-				return
-			}
+			check(err)
 			select {
 			case <-done:
 			case <-time.After(time.Second):
