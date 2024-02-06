@@ -114,6 +114,20 @@ func createBucket(c *websocket.Conn) (*Bucket, error) {
 	return &bucket, nil
 }
 
+type Change struct {
+	ClientId            string `json:"clientid"`
+	BucketChangeVersion string `json:"cv"`
+	SourceVersion       int    `json:"sv"`
+	EndVersion          int    `json:"ev"`
+	Id                  string `json:"id"`
+	OperationType       string `json:"o"`
+	// TODO: can the type here be more specific?
+	OperationValue map[string]interface{} `json:"v"`
+	UniqueUuid     string                 `json:"ccid"`
+	// TODO: can the type here be more specific?
+	DataObject map[string]interface{} `json:"d"`
+}
+
 func main() {
 	secrets = readSecrets()
 
@@ -153,34 +167,35 @@ func main() {
 			// attempt to update the internal state of `notes` if this is a change command
 			// continue if this is not a diffmatchpatch change
 			if message[2] == 'c' {
-				var changeData map[string]interface{}
-				err := json.Unmarshal([]byte(message[5:len(message)-1]), &changeData)
+				var change Change
+				err := json.Unmarshal([]byte(message[5:len(message)-1]), &change)
 				check(err)
 
-				if changeData["o"] != "M" {
+				if change.OperationType != "M" {
 					continue
 				}
 
-				content := changeData["v"].(map[string]interface{})
-				content = content["content"].(map[string]interface{})
+				if change.OperationValue["content"] == nil {
+					continue
+				}
 
-				if content["o"] != "d" {
+				content := change.OperationValue["content"].(map[string]interface{})
+
+				if content["o"].(string) != "d" {
 					continue
 				}
 
 				// at this point we know that `content["v"]` contains a diffmatchpatch string
 				log.Printf("recv: %s", message[5:len(message)-1])
 
-				noteId := changeData["id"].(string)
-
-				diffs, err := dmp.DiffFromDelta(bucket.entities[noteId].noteContent, content["v"].(string))
+				diffs, err := dmp.DiffFromDelta(bucket.entities[change.Id].noteContent, content["v"].(string))
 				check(err)
 
-				bucket.entities[noteId].noteContent = dmp.DiffText2(diffs)
-				fmt.Printf("---\n%s\n", bucket.entities[noteId].noteContent)
+				bucket.entities[change.Id].noteContent = dmp.DiffText2(diffs)
+				fmt.Printf("---\n%s\n", bucket.entities[change.Id].noteContent)
 
 				if selectedNoteId == "" {
-					selectedNoteId = noteId
+					selectedNoteId = change.Id
 				}
 			}
 		}
