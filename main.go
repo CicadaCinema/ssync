@@ -159,6 +159,9 @@ func main() {
 		defer close(done)
 		for {
 			_, message, err := c.ReadMessage()
+			if err != nil && !websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				break
+			}
 			check(err)
 
 			if message[0] == 'h' {
@@ -167,7 +170,6 @@ func main() {
 
 			// attempt to update the internal state of `notes` if this is a change command
 			// continue if this is not a diffmatchpatch change
-			fmt.Println(message)
 			if message[2] == 'c' {
 				var change Change
 				err := json.Unmarshal([]byte(message[5:len(message)-1]), &change)
