@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
@@ -115,17 +116,17 @@ func createBucket(c *websocket.Conn) (*Bucket, error) {
 }
 
 type Change struct {
-	ClientId            string `json:"clientid"`
-	BucketChangeVersion string `json:"cv"`
-	SourceVersion       int    `json:"sv"`
-	EndVersion          int    `json:"ev"`
-	Id                  string `json:"id"`
-	OperationType       string `json:"o"`
+	ClientId            string `json:"clientid,omitempty"`
+	BucketChangeVersion string `json:"cv,omitempty"`
+	SourceVersion       int    `json:"sv,omitempty"`
+	EndVersion          int    `json:"ev,omitempty"`
+	TargetId            string `json:"id,omitempty"`
+	OperationType       string `json:"o,omitempty"`
 	// TODO: can the type here be more specific?
-	OperationValue map[string]interface{} `json:"v"`
-	UniqueUuid     string                 `json:"ccid"`
+	OperationValue map[string]interface{} `json:"v,omitempty"`
+	Ccid           string                 `json:"ccid,omitempty"`
 	// TODO: can the type here be more specific?
-	DataObject map[string]interface{} `json:"d"`
+	DataObject map[string]interface{} `json:"d,omitempty"`
 }
 
 func main() {
@@ -166,10 +167,13 @@ func main() {
 
 			// attempt to update the internal state of `notes` if this is a change command
 			// continue if this is not a diffmatchpatch change
+			fmt.Println(message)
 			if message[2] == 'c' {
 				var change Change
 				err := json.Unmarshal([]byte(message[5:len(message)-1]), &change)
 				check(err)
+
+				bucket.entities[change.TargetId].version = change.EndVersion
 
 				if change.OperationType != "M" {
 					continue
@@ -188,14 +192,14 @@ func main() {
 				// at this point we know that `content["v"]` contains a diffmatchpatch string
 				log.Printf("recv: %s", message[5:len(message)-1])
 
-				diffs, err := dmp.DiffFromDelta(bucket.entities[change.Id].noteContent, content["v"].(string))
+				diffs, err := dmp.DiffFromDelta(bucket.entities[change.TargetId].noteContent, content["v"].(string))
 				check(err)
 
-				bucket.entities[change.Id].noteContent = dmp.DiffText2(diffs)
-				fmt.Printf("---\n%s\n", bucket.entities[change.Id].noteContent)
+				bucket.entities[change.TargetId].noteContent = dmp.DiffText2(diffs)
+				fmt.Printf("---\n%s\n", bucket.entities[change.TargetId].noteContent)
 
 				if selectedNoteId == "" {
-					selectedNoteId = change.Id
+					selectedNoteId = change.TargetId
 				}
 			}
 		}
@@ -203,6 +207,9 @@ func main() {
 
 	heartbeatTicker := time.NewTicker(time.Second * 20)
 	defer heartbeatTicker.Stop()
+
+	messageWriteTicker := time.NewTicker(time.Second * 30)
+	defer messageWriteTicker.Stop()
 
 	// writer
 	heartbeatCount := 0
@@ -214,6 +221,34 @@ func main() {
 			err := c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("h:%d", heartbeatCount)))
 			// assume heartbeat response was OK
 			heartbeatCount += 2
+			check(err)
+		case <-messageWriteTicker.C:
+			if selectedNoteId == "" {
+				continue
+			}
+
+			newLine := fmt.Sprintf("I am a Go format string and the current datetime is %s.\n", time.Now().String())
+			diff := dmp.DiffMain(bucket.entities[selectedNoteId].noteContent, bucket.entities[selectedNoteId].noteContent+newLine, false)
+			diffString := dmp.DiffToDelta(diff)
+
+			change := Change{
+				OperationType: "M",
+				OperationValue: map[string]interface{}{
+					"content": map[string]interface{}{
+						"o": "d",
+						"v": diffString,
+					},
+				},
+				TargetId:      selectedNoteId,
+				Ccid:          uuid.New().String(),
+				SourceVersion: bucket.entities[selectedNoteId].version,
+			}
+
+			changeBytes, err := json.Marshal(change)
+			check(err)
+
+			fmt.Printf("0:c:%s", string(changeBytes))
+			err = c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("0:c:%s", string(changeBytes))))
 			check(err)
 		case <-interrupt:
 			log.Println("interrupt")
