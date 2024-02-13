@@ -1,3 +1,5 @@
+`ssync` stands for "Simperium Sync".
+
 At commit `85e3c7b157f00ffea72e251ef24eaf01aeb51924`, some basic proof-of-concept functionality is implemented:
 - Populate `conf.json` with your credentials.
 - Run `go run main.go`.
