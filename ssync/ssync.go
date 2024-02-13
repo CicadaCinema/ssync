@@ -113,7 +113,7 @@ func StartSyncing(state InitAndUpdate, secrets Secrets, interrupt chan os.Signal
 	doneWg.Add(1)
 
 	u := url.URL{Scheme: "wss", Host: "api.simperium.com", Path: fmt.Sprintf("/sock/1/%s/websocket", secrets.ApplicationID)}
-	log.Printf("connecting to %s", u.String())
+	log.Printf("connecting to %s\n", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	check(err)
@@ -181,7 +181,7 @@ func StartSyncing(state InitAndUpdate, secrets Secrets, interrupt chan os.Signal
 				changeBytes, err := json.Marshal(change)
 				check(err)
 
-				fmt.Printf("0:c:%s", string(changeBytes))
+				fmt.Printf("0:c:%s\n", string(changeBytes))
 				err = c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("0:c:%s", string(changeBytes))))
 				check(err)
 			case <-interrupt:
