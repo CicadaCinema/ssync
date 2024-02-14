@@ -66,6 +66,9 @@ func (b *Bucket) Update(change *ssync.Change) {
 		err := json.Unmarshal([]byte(change.OperationValue["content"].(map[string]interface{})["v"].(string)), &file)
 		check(err)
 
+		err = os.WriteFile(file.FilePath, file.FileContent, 0644)
+		check(err)
+
 		b.pathToId[file.FilePath] = change.TargetId
 		b.idToPath[change.TargetId] = file.FilePath
 	case "-":
