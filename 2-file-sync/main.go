@@ -34,6 +34,8 @@ type Bucket struct {
 	idToPath map[string]string
 	// do not run `Update` in response to local changes
 	ignoreNextUpdate bool
+	// do not respond to sync file update events as if they were local
+	ignoreNextFileEvent bool
 }
 
 func (b *Bucket) Init(bucketChangeVersion string, entities []ssync.Entity) {
@@ -59,6 +61,8 @@ func (b *Bucket) Update(change *ssync.Change) {
 		b.ignoreNextUpdate = false
 		return
 	}
+
+	b.ignoreNextFileEvent = true
 
 	switch change.OperationType {
 	case "M":
@@ -108,8 +112,15 @@ func main() {
 				if !ok {
 					return
 				}
+
 				if event.Has(fsnotify.Write) {
 					fmt.Println("write:", event.Name)
+
+					if bucket.ignoreNextFileEvent {
+						bucket.ignoreNextFileEvent = false
+						continue
+					}
+
 					bucket.ignoreNextUpdate = true
 
 					entityId := uuid.New().String()
@@ -170,6 +181,12 @@ func main() {
 					}
 				} else if event.Has(fsnotify.Rename) || event.Has(fsnotify.Remove) {
 					fmt.Println("delete:", event.Name)
+
+					if bucket.ignoreNextFileEvent {
+						bucket.ignoreNextFileEvent = false
+						continue
+					}
+
 					bucket.ignoreNextUpdate = true
 
 					messageWrite <- ssync.Change{
